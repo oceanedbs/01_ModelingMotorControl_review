@@ -3,6 +3,7 @@ import math
 from scipy.integrate import odeint
 import matplotlib.pyplot as plt
 from TwoDLArm_func import *
+import pandas as pd
 # --- Paramètres mécaniques du bras (Table 1 de l'article) ---
 # Longueurs (m), masses (kg), inerties (kg·m²), centres de masse (m)
 
@@ -31,45 +32,36 @@ acxf, acyf = 0, 0  # Accélération finale
 K = np.array([[-15, -6], [-6, -16]])  # Stiffness
 V = np.array([[-2.3, -0.9], [-0.9, -2.4]])  # Viscosité
 
+desTraj = pd.DataFrame()
+
 handPos = direct_kinematics([np.deg2rad(45), np.deg2rad(90)], L1, L2)
-
-
-# # --- Trajectoire désirée (minimum jerk) ---
-# def desired_trajectory(t, t_total=0.65):
-#     print("desired_trajectory")
-#     """Trajectoire en ligne droite 'minimum jerk' pour le point final (x, y)."""
-#     # Paramètres pour un mouvement de 10 cm à 0° (à adapter)
-#     x0, y0 = 0, 0  # Position initiale
-#     xf, yf = 0.1, 0  # Position finale (10 cm à 0°)
-#     # Polynôme minimum jerk (Flash & Hogan, 1985)
-#     if t <= t_total:
-#         s = t / t_total
-#         x = x0 + (xf - x0) * (10*s**3 - 15*s**4 + 6*s**5)
-#         y = y0 + (yf - y0) * (10*s**3 - 15*s**4 + 6*s**5)
-#         dx = (xf - x0) * (30*s**2 - 60*s**3 + 30*s**4) / t_total
-#         dy = (yf - y0) * (30*s**2 - 60*s**3 + 30*s**4) / t_total
-#         ddx = (xf - x0) * (60*s - 180*s**2 + 120*s**3) / t_total**2
-#         ddy = (yf - y0) * (60*s - 180*s**2 + 120*s**3) / t_total**2
-#     else:
-#         x, y = xf, yf
-#         dx, dy = 0, 0
-#         ddx, ddy = 0, 0
-#     return np.array([x, y]), np.array([dx, dy]), np.array([ddx, ddy])
-
 
 # --- Contrôleur (Eq. 9) ---
 def controller(q, dq, t, E_hat=None):
     print("controller")
     """Contrôleur avec modèle interne et feedback viscoélastique."""
-    # Trajectoire désirée en cartesien pour l'instant t
-    x_des, x_dot_des, x_dd_des = desired_trajectory(t)
+    
+    #Retrieve desired trajectory at time t
+   
+    if t > desTraj["time"].iloc[-1]:
+        t = desTraj["time"].iloc[-1]
+    x_des = desTraj["trajX"].values[np.searchsorted(desTraj["time"].values, t)]
+    y_des = desTraj["trajY"].values[np.searchsorted(desTraj["time"].values, t)]
+    x_dot_des = desTraj["velX"].values[np.searchsorted(desTraj["time"].values, t)]
+    y_dot_des = desTraj["velY"].values[np.searchsorted(desTraj["time"].values, t)]
+    x_dd_des = desTraj["accelX"].values[np.searchsorted(desTraj["time"].values, t)]
+    y_dd_des = desTraj["accelY"].values[np.searchsorted(desTraj["time"].values, t)]
+    x_des = np.array([x_des, y_des])
+    x_dot_des = np.array([x_dot_des, y_dot_des])
+    x_dd_des = np.array([x_dd_des, y_dd_des])
+    
     
     # Convertir en coordonnées articulaires
-    q_des, dq_des, ddq_des = inverse_kinematics_accelerations(x_des, x_dot_des, x_dd_des) #position articulaire désirée via la cinématique inverse
+    q_des, dq_des, ddq_des = inverse_kinematics_accelerations(x_des, x_dot_des, x_dd_des, L1, L2) #position articulaire désirée via la cinématique inverse
 
     # Modèle interne du bras (D_hat)
-    I = inertia_matrix(q)
-    G = coriolis_matrix(q, dq)
+    I = inertia_matrix(q, L1, L2, m1, m2, r1, r2, I1, I2)
+    G = coriolis_matrix(q, dq, L1, L2, m2, r2)
     D_hat = I @ ddq_des + G
 
     # Modèle de l'environnement (E_hat)
@@ -90,10 +82,9 @@ def dynamics(y, t, E_func=None):
     print("dynamics")
     """Équations différentielles pour la dynamique du bras."""
     q, dq = y[:2], y[2:] #récupérer q et dq initiaux
-    print(q, dq)
     #Calcul des matrices d'inertie et de coriolis à partir de q et dq
-    I = inertia_matrix(q)
-    G = coriolis_matrix(q, dq)
+    I = inertia_matrix(q, L1, L2, m1, m2, r1, r2, I1, I2)
+    G = coriolis_matrix(q, dq, L1, L2, m2, r2)
 
     # Champ de forces externe
     if E_func is not None:
@@ -123,16 +114,25 @@ def simulate_movement(E_func=None, t_max=1.0):
     t = np.linspace(0, t_max, 100) # 100 points de temps de simulation
     pos_list = []
     vel_list = []
-    time, posX, velX, accelX , _ = fun_minjerktrajectory(0.5, x0, vx0, acx0, xf, vxf, acxf, 100)  # Pré-calculer la trajectoire désirée
-    time, posY, velY, accelY , _ = fun_minjerktrajectory(0.5, y0, vy0, acy0, yf, vyf, acyf, 100)  # Pré-calculer la trajectoire désirée
+    time, posX, velX, accelX , jerkX = fun_minjerktrajectory(0.5, x0, vx0, acx0, xf, vxf, acxf, 100)  # Pré-calculer la trajectoire désirée
+    time, posY, velY, accelY , jerkY_ = fun_minjerktrajectory(0.5, y0, vy0, acy0, yf, vyf, acyf, 100)  # Pré-calculer la trajectoire désirée
     
  
     
     trajX = handPos[0] + posX
     trajY = handPos[1] + posY   
     
-    print(trajX)
-    print(trajY)
+    desTraj["time"] = time
+    desTraj["posX"] = posX
+    desTraj["posY"] = posY
+    desTraj["velX"] = velX
+    desTraj["velY"] = velY
+    desTraj["accelX"] = accelX
+    desTraj["accelY"] = accelY
+    desTraj["jerkX"] = jerkX
+    desTraj["jerkY"] = jerkY_
+    desTraj["trajX"] = trajX
+    desTraj["trajY"] = trajY
     
     pos_list = list(zip(posX, posY))
     vel_list = list(np.sqrt(velX**2 + velY**2))
@@ -141,10 +141,8 @@ def simulate_movement(E_func=None, t_max=1.0):
 
     for i in range(len(time)):
         X = [trajX[i], trajY[i]]
-        print(X)
         theta = inverse_kinematics(X[0], X[1], L1, L2)
         theta_list.append(theta)
-        print(theta)
 
 
     fig, axs = plt.subplots(3, 1, figsize=(8, 8))
@@ -171,7 +169,6 @@ def simulate_movement(E_func=None, t_max=1.0):
     q1 = theta_array[:, 0]
     q2 = theta_array[:, 1]
     
-    print(q1)
     axs[2].plot(time, np.rad2deg(q1), label="q1 (rad)")
     axs[2].plot(time, np.rad2deg(q2), label="q2 (rad)")
     axs[2].set_title("Angles articulaires désirés")
@@ -182,7 +179,8 @@ def simulate_movement(E_func=None, t_max=1.0):
 
     plt.tight_layout()
     plt.show()
-    sol = odeint(dynamics, y0, t, args=(E_func,))
+    initial_conditions = np.array([np.deg2rad(45), np.deg2rad(90), 0, 0]) 
+    sol = odeint(dynamics, initial_conditions, time, args=(E_func,))
     q, dq = sol[:, :2], sol[:, 2:]
     return t, q, dq
 
@@ -206,11 +204,12 @@ def plot_trajectory(t, q):
     plt.title("Trajectoire de la main")
     plt.grid()
     plt.show()
+ 
 
 # --- Exemple d'utilisation ---
 if __name__ == "__main__":
     # Simuler sans champ de forces
-    t, q_null, _ = simulate_movement(E_func=None)
+    t, q_null, _ = simulate_movement(E_func=None, t_max=0.5)
     plot_trajectory(t, q_null)
 
     # # Simuler avec champ de forces cartésien

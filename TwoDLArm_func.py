@@ -219,17 +219,17 @@ def inverse_kinematics(x, y, L1, L2):
 
     return np.array([q1, q2])
 
-def inverse_kinematics_velocities(x, dx):
+def inverse_kinematics_velocities(x, dx, L1, L2):
     print("inverse_kinematics_velocities")
     """Calcule q1, q2 et leurs vitesses à partir de x, y, dx, dy."""
     x, y = x
     dx, dy = dx
     
     # Cinématique inverse pour q1, q2
-    q1, q2 = inverse_kinematics(x, y)
+    q1, q2 = inverse_kinematics(x, y, L1, L2)
 
     # Jacobien et son inverse
-    J = jacobian((q1, q2))
+    J = jacobian((q1, q2), L1, L2)
     try:
         J_inv = np.linalg.inv(J)
     except np.linalg.LinAlgError:
@@ -240,15 +240,15 @@ def inverse_kinematics_velocities(x, dx):
     dq = J_inv @ np.array([dx, dy])
     return q1, q2, dq[0], dq[1]
 
-def inverse_kinematics_accelerations(x, dx, ddx):
+def inverse_kinematics_accelerations(x, dx, ddx, L1, L2):
     print("inverse_kinematics_accelerations")
     """Calcule q1, q2, dq1, dq2, ddq1, ddq2."""
     x, y = x
     dx, dy = dx
     ddx, ddy = ddx
-    q1, q2, dq1, dq2 = inverse_kinematics_velocities((x, y), (dx, dy))
-    J = jacobian((q1, q2))
-    dJ = jacobian_dot((q1, q2), (dq1, dq2))
+    q1, q2, dq1, dq2 = inverse_kinematics_velocities((x, y), (dx, dy), L1, L2)
+    J = jacobian((q1, q2), L1, L2)
+    dJ = jacobian_dot((q1, q2), (dq1, dq2), L1, L2)
     J_inv = np.linalg.inv(J)
     ddq = J_inv @ (np.array([ddx, ddy]) - dJ @ np.array([dq1, dq2]))
     return (q1, q2), (dq1, dq2), (ddq[0], ddq[1])
