@@ -176,11 +176,11 @@ def inverse_kinematics(x, y, L1, L2):
     if q1 < 0:
         q1 = q1 + 2*math.pi
 
-    return np.array([q1, q2])
+    return np.array([q2, q1])
 
 
 # --- Jacobien ---
-def ddirect_kinematics(q, L1, L2):
+def jacobian(q, L1, L2):
     print("ddirect_kinematics")
     """Dérivé du modèle cinématique direct pour convertire les vitesses articulaires en vitesses cartésiennes."""
     q1, q2 = q
@@ -207,7 +207,7 @@ def jacobian_dot(q, qd, L1, L2):
 def forward_kinematics_acceleration(q1, q2, dq1, dq2, ddq1, ddq2):
     print("forward_kinematics_acceleration")
     """Calcule les accélérations cartésiennes (ddx, ddy)."""
-    J = ddirect_kinematics(q1, q2)
+    J = jacobian(q1, q2)
     dJ = jacobian_dot(q1, q2, dq1, dq2)
     ddq = np.array([ddq1, ddq2])
     dq = np.array([dq1, dq2])
@@ -218,7 +218,7 @@ def forward_kinematics_acceleration(q1, q2, dq1, dq2, ddq1, ddq2):
 def inverse_jacobian(q1, q2):
     print("inverse_jacobian")
     """Inverse le jacobien (si possible)."""
-    J = ddirect_kinematics([q1, q2])
+    J = jacobian([q1, q2], L1, L2)
     det_J = np.linalg.det(J)
     if abs(det_J) < 1e-6:
         raise ValueError("Jacobien singulier (det ≈ 0)")
@@ -234,7 +234,7 @@ def inverse_kinematics_velocities(x, dx, L1, L2):
     q1, q2 = inverse_kinematics(x, y, L1, L2)
 
     # Jacobien et son inverse
-    J = ddirect_kinematics((q1, q2), L1, L2)
+    J = jacobian((q1, q2), L1, L2)
     try:
         J_inv = np.linalg.inv(J)
     except np.linalg.LinAlgError:
@@ -245,15 +245,71 @@ def inverse_kinematics_velocities(x, dx, L1, L2):
     dq = J_inv @ np.array([dx, dy])
     return q1, q2, dq[0], dq[1]
 
-def inverse_kinematics_accelerations(x, dx, ddx, L1, L2):
-    print("inverse_kinematics_accelerations")
-    """Calcule q1, q2, dq1, dq2, ddq1, ddq2."""
-    x, y = x
-    dx, dy = dx
-    ddx, ddy = ddx
-    q1, q2, dq1, dq2 = inverse_kinematics_velocities((x, y), (dx, dy), L1, L2)
-    J = ddirect_kinematics((q1, q2), L1, L2)
-    dJ = jacobian_dot((q1, q2), (dq1, dq2), L1, L2)
-    J_inv = np.linalg.inv(J)
-    ddq = J_inv @ (np.array([ddx, ddy]) - dJ @ np.array([dq1, dq2]))
-    return (q1, q2), (dq1, dq2), (ddq[0], ddq[1])
+def compute_joint_desired_states(x_des, dx_des, ddx_des, L1, L2,
+                                jacobian_fn, jacobian_dot_fn,
+                                inverse_kin_fn,
+                                use_damped_ls=False, damping_lambda=1e-3):
+    """
+    Compute qd, dqd, ddqd from desired Cartesian x_des, dx_des, ddx_des.
+    Inputs:
+      x_des : array-like (2,) desired [x, y]
+      dx_des: array-like (2,) desired [xdot, ydot]
+      ddx_des: array-like (2,) desired [xddot, yddot]
+      L1,L2 : link lengths
+      jacobian_fn(q, L1, L2) -> 2x2 Jacobian
+      jacobian_dot_fn(q, qd, L1, L2) -> 2x2 dJ/dt
+      inverse_kin_fn(x, y, L1, L2) -> [q1,q2]
+      use_damped_ls : if True, use damped least squares for Jacobian inversion
+      damping_lambda : damping factor for DLS
+
+    Returns:
+      qd : np.array (2,)
+      dqd: np.array (2,)
+      ddqd: np.array (2,)
+    """
+
+    x_des = np.asarray(x_des, dtype=float)
+    print(x_des)
+    
+    dx_des = np.asarray(dx_des, dtype=float)
+    ddx_des = np.asarray(ddx_des, dtype=float)
+
+    # 1) inverse kinematics (position)
+    qd = np.asarray(inverse_kin_fn(x_des[0], x_des[1], L1, L2), dtype=float)  # shape (2,)
+    print(qd)
+
+    # 2) Jacobian at qd
+    J = np.asarray(jacobian_fn(qd, L1, L2), dtype=float)  # shape (2,2)
+
+    # invert J robustly
+    def invert_J(J):
+        # try direct inverse if well-conditioned
+        try:
+            det = np.linalg.det(J)
+        except Exception:
+            det = 0.0
+        if abs(det) > 1e-8:
+            return np.linalg.inv(J)
+        # fallback: pseudoinverse
+        if not use_damped_ls:
+            return np.linalg.pinv(J)
+        # damped least squares inverse: J^T (J J^T + lambda^2 I)^{-1}
+        JT = J.T
+        JJt = J @ JT
+        reg = JJt + (damping_lambda**2) * np.eye(JJt.shape[0])
+        inv_reg = np.linalg.inv(reg)
+        return JT @ inv_reg
+
+    J_inv = invert_J(J)
+
+    # 3) joint velocities
+    dqd = J_inv @ dx_des  # shape (2,)
+
+    # 4) jacobian time derivative at (q, dqd)
+    dJ = np.asarray(jacobian_dot_fn(qd, dqd, L1, L2), dtype=float)
+
+    # 5) joint accelerations: ddq = J^{-1} (ddx - dJ * dq)
+    rhs = ddx_des - dJ @ dqd
+    ddqd = J_inv @ rhs
+
+    return qd, dqd, ddqd
