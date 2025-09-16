@@ -16,8 +16,11 @@ def coriolis_matrix(q, dq, L1, L2, m2, r2):
     """Forces de Coriolis et centrifuges G(q, dq)."""
     q1, q2 = q
     dq1, dq2 = dq
-    G1 = -m2 * L1 * r2 * np.sin(q2) * dq2**2 - 2 * m2 * L1 * r2 * np.sin(q2) * dq1 * dq2
-    G2 = m2 * L1 * r2 * np.sin(q2) * dq1**2
+    h = m2 * L1 * r2 * np.sin(q2)
+    G1 = -h * (2 * dq1 * dq2 + dq2**2)
+    G2 =  h * (dq1**2)
+    # G1 = -m2 * L1 * r2 * np.sin(q2) * dq2**2 - 2 * m2 * L1 * r2 * np.sin(q2) * dq1 * dq2
+    # G2 = m2 * L1 * r2 * np.sin(q2) * dq1**2
     return np.array([G1, G2])
 
 # --- Champ de forces ---
@@ -151,50 +154,6 @@ def fun_minjerktrajectory(duration, posi, veli, acci, posf, velf, accf, npoints)
     return mytime, position, velocity, acceleration, jerk
 
 
-
-# --- Jacobien ---
-def jacobian(q, L1, L2):
-    print("jacobian")
-    """Jacobien pour convertir vitesses articulaires en vitesses cartésiennes."""
-    q1, q2 = q
-    J = np.array([
-        [-L1*np.sin(q1) - L2*np.sin(q1+q2), -L2*np.sin(q1+q2)],
-        [ L1*np.cos(q1) + L2*np.cos(q1+q2),  L2*np.cos(q1+q2)]
-    ])
-    return J
-
-def jacobian_dot(q, qd, L1, L2):
-    print("jacobian_dot")
-    q1, q2 = q
-    dq1, dq2 = qd
-    """Dérivée du jacobien (dJ/dt)."""
-    return np.array([
-        [-L1*np.cos(q1)*dq1 - L2*np.cos(q1+q2)*(dq1+dq2), -L2*np.cos(q1+q2)*(dq1+dq2)],
-        [-L1*np.sin(q1)*dq1 - L2*np.sin(q1+q2)*(dq1+dq2), -L2*np.sin(q1+q2)*(dq1+dq2)]
-    ])
-
-
-
-def forward_kinematics_acceleration(q1, q2, dq1, dq2, ddq1, ddq2):
-    print("forward_kinematics_acceleration")
-    """Calcule les accélérations cartésiennes (ddx, ddy)."""
-    J = jacobian(q1, q2)
-    dJ = jacobian_dot(q1, q2, dq1, dq2)
-    ddq = np.array([ddq1, ddq2])
-    dq = np.array([dq1, dq2])
-    ddx = J[0, 0]*ddq1 + J[0, 1]*ddq2 + dJ[0, 0]*dq1 + dJ[0, 1]*dq2
-    ddy = J[1, 0]*ddq1 + J[1, 1]*ddq2 + dJ[1, 0]*dq1 + dJ[1, 1]*dq2
-    return ddx, ddy
-
-def inverse_jacobian(q1, q2):
-    print("inverse_jacobian")
-    """Inverse le jacobien (si possible)."""
-    J = jacobian([q1, q2])
-    det_J = np.linalg.det(J)
-    if abs(det_J) < 1e-6:
-        raise ValueError("Jacobien singulier (det ≈ 0)")
-    return np.linalg.inv(J)
-
 def direct_kinematics(q, L1, L2):
     print("direct_kinematics")
     """Calcule la position (x, y) du point final à partir de q."""
@@ -219,6 +178,52 @@ def inverse_kinematics(x, y, L1, L2):
 
     return np.array([q1, q2])
 
+
+# --- Jacobien ---
+def ddirect_kinematics(q, L1, L2):
+    print("ddirect_kinematics")
+    """Dérivé du modèle cinématique direct pour convertire les vitesses articulaires en vitesses cartésiennes."""
+    q1, q2 = q
+    J = np.array([
+        [-L1*np.sin(q1) - L2*np.sin(q1+q2), -L2*np.sin(q1+q2)],
+        [ L1*np.cos(q1) + L2*np.cos(q1+q2),  L2*np.cos(q1+q2)]
+    ])
+    return J
+
+#%%%%%%%
+
+def jacobian_dot(q, qd, L1, L2):
+    print("jacobian_dot")
+    q1, q2 = q
+    dq1, dq2 = qd
+    """Dérivée du jacobien (dJ/dt)."""
+    return np.array([
+        [-L1*np.cos(q1)*dq1 - L2*np.cos(q1+q2)*(dq1+dq2), -L2*np.cos(q1+q2)*(dq1+dq2)],
+        [-L1*np.sin(q1)*dq1 - L2*np.sin(q1+q2)*(dq1+dq2), -L2*np.sin(q1+q2)*(dq1+dq2)]
+    ])
+
+
+
+def forward_kinematics_acceleration(q1, q2, dq1, dq2, ddq1, ddq2):
+    print("forward_kinematics_acceleration")
+    """Calcule les accélérations cartésiennes (ddx, ddy)."""
+    J = ddirect_kinematics(q1, q2)
+    dJ = jacobian_dot(q1, q2, dq1, dq2)
+    ddq = np.array([ddq1, ddq2])
+    dq = np.array([dq1, dq2])
+    ddx = J[0, 0]*ddq1 + J[0, 1]*ddq2 + dJ[0, 0]*dq1 + dJ[0, 1]*dq2
+    ddy = J[1, 0]*ddq1 + J[1, 1]*ddq2 + dJ[1, 0]*dq1 + dJ[1, 1]*dq2
+    return ddx, ddy
+
+def inverse_jacobian(q1, q2):
+    print("inverse_jacobian")
+    """Inverse le jacobien (si possible)."""
+    J = ddirect_kinematics([q1, q2])
+    det_J = np.linalg.det(J)
+    if abs(det_J) < 1e-6:
+        raise ValueError("Jacobien singulier (det ≈ 0)")
+    return np.linalg.inv(J)
+
 def inverse_kinematics_velocities(x, dx, L1, L2):
     print("inverse_kinematics_velocities")
     """Calcule q1, q2 et leurs vitesses à partir de x, y, dx, dy."""
@@ -229,7 +234,7 @@ def inverse_kinematics_velocities(x, dx, L1, L2):
     q1, q2 = inverse_kinematics(x, y, L1, L2)
 
     # Jacobien et son inverse
-    J = jacobian((q1, q2), L1, L2)
+    J = ddirect_kinematics((q1, q2), L1, L2)
     try:
         J_inv = np.linalg.inv(J)
     except np.linalg.LinAlgError:
@@ -247,7 +252,7 @@ def inverse_kinematics_accelerations(x, dx, ddx, L1, L2):
     dx, dy = dx
     ddx, ddy = ddx
     q1, q2, dq1, dq2 = inverse_kinematics_velocities((x, y), (dx, dy), L1, L2)
-    J = jacobian((q1, q2), L1, L2)
+    J = ddirect_kinematics((q1, q2), L1, L2)
     dJ = jacobian_dot((q1, q2), (dq1, dq2), L1, L2)
     J_inv = np.linalg.inv(J)
     ddq = J_inv @ (np.array([ddx, ddy]) - dJ @ np.array([dq1, dq2]))
