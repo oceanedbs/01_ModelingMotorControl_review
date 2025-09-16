@@ -89,14 +89,22 @@ def controller(q, dq, t, desTraj,
     C = S + D_hat
     return C
 
+def system(q, dq, C, E, L1, L2, m1, m2, r1, r2, I1, I2, t_max):
+     #Calcul des matrices d'inertie et de coriolis à partir de q et dq
+    I = inertia_matrix(q, L1, L2, m1, m2, r1, r2, I1, I2)
+    G = coriolis_matrix(q, dq, L1, L2, m2, r2)
+
+    # Équation dynamique: I(q) ddq + G(q, dq) + E = C
+    ddq = np.linalg.pinv(I)@(C-G)  #np.linalg.solve(I, C - G - E)
+    return ddq
+
 # --- Dynamique complète (Eq. 4) ---
-def dynamics(y, t, desTraj, K, V,
+def MyControl(y, t, desTraj, K, V,
              L1, L2, m1, m2, r1, r2, I1, I2,
              E_func=None, E_hat=None):
     print("dynamics")
     """Équations différentielles pour la dynamique du bras."""
-    q, dq = y[:2], y[2:] #récupérer q et dq initiaux
- 
+    q, dq = y[:2], y[2:]  # récupérer q et dq initiaux
 
     # External environment forces
     if E_func is None:
@@ -113,23 +121,10 @@ def dynamics(y, t, desTraj, K, V,
 
     # Controller torque
     C = controller(q, dq, t, desTraj, L1, L2, m1, m2, r1, r2, I1, I2, K, V, E_hat)
-
-    #Calcul des matrices d'inertie et de coriolis à partir de q et dq
-    I = inertia_matrix(q, L1, L2, m1, m2, r1, r2, I1, I2)
-    G = coriolis_matrix(q, dq, L1, L2, m2, r2)
-
-    # Équation dynamique: I(q) ddq + G(q, dq) + E = C
-    ddq = np.linalg.pinv(I)@(C-G)  #np.linalg.solve(I, C - G - E)
     
-    dq = dq + ddq*t_max/100
-    
-    print('q', q)
-    q = q + dq*t_max/100
-    print('q t+1:', q  )
-    
-    print("q:", q, "dq:", dq, "ddq:", ddq)
-        
-    return q, dq, ddq
+   
+   
+    return q, dq, C, E
 
 # --- Simulation ---
 def simulate_movement(E_func=None, t_max=1.0):
@@ -165,8 +160,6 @@ def simulate_movement(E_func=None, t_max=1.0):
     vel_list = list(np.sqrt(velX**2 + velY**2))
     
     theta_list = []
-    pos_verif_list=[]
-
     #Compute desired joint angle trajectories (for the desired hand trajectory)
     for i in range(len(time)):
         X = [trajX[i], trajY[i]]
@@ -182,12 +175,6 @@ def simulate_movement(E_func=None, t_max=1.0):
                                              use_damped_ls=True, damping_lambda=1e-3)
         theta_list.append((theta, dq_des, ddq_des))
         
-        pos_verif = direct_kinematics(theta, L1, L2)
-        pos_verif_list.append(pos_verif)
-
-    plt.plot(*zip(*pos_verif_list), label="Trajectoire vérifiée", linestyle=':')
-    plt.show()
-    
 
     #Store desired joint angles in the dataframe
     desTraj["q1_des"] = [theta[0][0] for theta in theta_list]
@@ -246,23 +233,22 @@ def simulate_movement(E_func=None, t_max=1.0):
     q_res, dq_res, ddq_res = [(cond_init[0], cond_init[1])], [(cond_init[2], cond_init[3])], [(0,0)]
     print("Time : ", time)
     for t in range(len(time)-1):
-        q, dq, ddq=dynamics(initial_conditions, time[t], desTraj, K, V, L1, L2, m1, m2, r1, r2, I1, I2, E_func, E_hat=None)
+        q,dq, C, E=MyControl(initial_conditions, time[t], desTraj, K, V, L1, L2, m1, m2, r1, r2, I1, I2, E_func, E_hat=None)
+
+         #system simulation
+        ddq = system(q, dq, C, E, L1, L2, m1, m2, r1, r2, I1, I2, t_max)
+        
+        #Integration (Euler explicite)
+        dq = dq + ddq*t_max/100
+        q = q + dq*t_max/100
+        
+        #Update state
         initial_conditions = np.concatenate([q, dq])
         q_res.append(q)
         dq_res.append(dq)
         ddq_res.append(ddq)
         # input("Press Enter to continue to the next step...")
-    
-    # sol = odeint(dynamics, initial_conditions, t,
-    #              args=(desTraj, K, V, L1, L2, m1, m2, r1, r2, I1, I2, E_func, None))
-    #q, dq = sol[:, :2], sol[:, 2:]
-    
-    # #new figure with q_res, ddq_res
-    # fig, axs = plt.subplots(3, 1, figsize=(8, 8))
-    # # Angles articulaires en fonction du temps
-    # axs[0].plot(time, np.rad2deg([q[0] for q in q_res]), label="q1 (rad)")
-    # axs[0].plot(time, np.rad2deg([q[1] for q in q_res]), label="q2 (rad)")
-    # axs[0].set_title("Angles articulaires")
+
     return time, q_res, dq_res, ddq_res
 
 # --- Visualisation ---
@@ -275,7 +261,7 @@ def plot_trajectory(t, q):
         yi = L1*np.sin(qi[0]) + L2*np.sin(qi[0]+qi[1])
         x.append(xi)
         y.append(yi)
-    plt.plot(x, y, label="Trajectoire")
+    plt.scatter(x, y, label="Trajectoire")
     plt.scatter(x[0], y[0], c='green', label="Début")
     plt.scatter(x[-1], y[-1], c='red', label="Fin")
     plt.xlabel("X (m)")
