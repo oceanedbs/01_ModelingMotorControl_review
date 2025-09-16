@@ -86,7 +86,7 @@ def controller(q, dq, t, desTraj,
 
     # Contrôleur complet (Eq. 9)
     # C = D_hat + E_hat - S
-    C = S
+    C = S + D_hat
     return C
 
 # --- Dynamique complète (Eq. 4) ---
