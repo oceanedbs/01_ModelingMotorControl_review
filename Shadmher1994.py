@@ -268,6 +268,8 @@ def plot_trajectory(t, q):
 
 # --- Exemple d'utilisation ---
 if __name__ == "__main__":
+    
+    plot_arm(cond_init, L1, L2, [xf, yf])
     # Simuler sans champ de forces
     t, q_null, _, _ = simulate_movement(E_func=None, t_max=t_max)
     plot_trajectory(t, q_null)

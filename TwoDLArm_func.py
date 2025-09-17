@@ -1,5 +1,8 @@
 import numpy as np
 import math
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches    
+
 # --- Dynamique du bras ---
 def inertia_matrix(q, L1, L2, m1, m2, r1, r2, I1, I2):
     print("inertia_matrix")
@@ -313,3 +316,225 @@ def compute_joint_desired_states(x_des, dx_des, ddx_des, L1, L2,
     ddqd = J_inv @ rhs
 
     return qd, dqd, ddqd
+
+
+def plot_arm(init_config, L1, L2, target):
+    fig, axs = plt.subplots(1, 1, layout="constrained")
+
+    targetx = target[0]
+    targety = target[1]
+    shpos = [0, 0]
+    elpos = direct_kinematics([init_config[0], init_config[1]], L1, 0)
+    handpos = direct_kinematics([init_config[0], init_config[1]], L1, L2)
+    xlim, ylim, xticks, yticks = fun_axisfunscaling(-.27+.1, .27+.1, -0.02, 0.52, 10, True)
+    axs.plot([shpos[0], elpos[0]], [shpos[1], elpos[1]], color='k', linewidth=3*0.5)
+    axs.plot([elpos[0], handpos[0]], [elpos[1], handpos[1]], color='k', linewidth=3*0.5)
+    circle1 = plt.Circle((shpos[0], shpos[1]), 0.01, color='k', fill=True, linewidth=0.5)
+    circle2 = plt.Circle((elpos[0], elpos[1]), 0.01, color='k', fill=True, linewidth=0.5)
+    axs.add_patch(circle1)
+    axs.add_patch(circle2)
+    elpos2 = direct_kinematics([init_config[0], init_config[1]], 1.5*L1, 0)
+    axs.plot([elpos[0], elpos2[0]], [elpos[1], elpos2[1]], color='k', linewidth=0.5*0.5)
+    axs.set(xlim=xlim, ylim=ylim)
+    axs.set_axis_off()
+
+    axs.plot([0, .2], [0, 0], color='k', linewidth=0.5*0.5)
+    axs.text(0.21, -0.01, '$x$')
+    axs.plot([0, 0], [0, .2], color='k', linewidth=0.5*0.5)
+    axs.text(-0.01, 0.21, '$y$')
+
+    axs.plot([handpos[0], handpos[0]+.1], [handpos[1], handpos[1]], color='k', linewidth=0.5*0.5)
+    axs.text(handpos[0]+.11, handpos[1]-0.01, '0$^\\circ$')
+
+    axs.text(0.08, 0.025, '$\\theta_\\mathrm{sh}$')
+    e = patches.Arc((0, 0), .1, .1, angle=0.0, theta1=0.0, theta2=45.0)
+    axs.add_patch(e)
+    axs.text(0.19, 0.29, '$\\theta_\\mathrm{el}$')
+    e = patches.Arc((elpos[0], elpos[1]), .1, .1, angle=0.0, theta1=45, theta2=135.0)
+    axs.add_patch(e)
+    axs.text(-0.12, 0.44, '($x$,$y$)')
+
+    e = patches.Arc((0.1, 0.1), .1, .1, angle=0.0, theta1=0.0, theta2=85.0)
+    axs.add_patch(e)
+    axs.annotate("", xytext=(0.12, 0.146), xy=(0.095, 0.154),
+                arrowprops=dict(color='k', arrowstyle="->"))
+    axs.text(0.09, 0.17, '$\\tau_\\mathrm{sh}$')
+
+    e = patches.Arc((0.1, 0.31), .1, .1, angle=0.0, theta1=65, theta2=165.0)
+    axs.add_patch(e)
+    axs.annotate("", xytext=(0.055, 0.333), xy=(0.047, 0.315),
+                arrowprops=dict(color='k', arrowstyle="->"))
+    axs.text(0.04, 0.285, '$\\tau_\\mathrm{el}$')
+
+    circle1 = plt.Circle((handpos[0], handpos[1]), 0.004, color='k', fill=False, linewidth=0.5)
+    circle2 = plt.Circle((handpos[0]+targetx, handpos[1]+targety), 0.008,
+                        color='k', fill=False, linewidth=0.5)
+    axs.add_patch(circle1)
+    axs.add_patch(circle2)
+
+    axs.plot([-0.05, -0.05], [0, 0.05], color='k', linewidth=0.5*0.5)
+
+
+
+def fun_axisfunscaling(xmin, xmax, ymin, ymax, axisscaling, zeroref):
+    xmin1 = xmin
+    xmax1 = xmax
+    ymin1 = ymin
+    ymax1 = ymax
+    if xmin >= 0:
+        if zeroref:
+            xmin1 = 0
+        else:
+            xmin1 = xmin*(1-axisscaling/100.0)
+        xmax1 = xmax*(1+axisscaling/100.0)
+
+    if xmax <= 0:
+        if zeroref:
+            xmax1 = 0
+        else:
+            xmax1 = xmax*(1-axisscaling/100.0)
+        xmin1 = xmin*(1+axisscaling/100.0)
+
+    if ymin >= 0:
+        if zeroref:
+            ymin1 = 0
+        else:
+            ymin1 = ymin*(1-axisscaling/100.)
+        ymax1 = ymax*(1+axisscaling/100.0)
+
+    if ymax <= 0:
+        if zeroref:
+            ymax1 = 0
+        else:
+            ymax1 = ymax*(1-axisscaling/100.0)
+        ymin1 = ymin*(1+axisscaling/100.0)
+
+    if (xmin < 0) & (xmax > 0):
+        xmin1 = xmin*(1+axisscaling/100.0)
+        xmax1 = xmax*(1+axisscaling/100.0)
+
+    if (ymin < 0) & (ymax > 0):
+        ymin1 = ymin*(1+axisscaling/100.0)
+        ymax1 = ymax*(1+axisscaling/100.0)
+
+    return fun_axisfun(xmin1, xmax1, ymin1, ymax1)
+
+
+
+def fun_axisfun(xmin, xmax, ymin, ymax):
+    if ((xmax == xmin) | (xmax < xmin)):
+        xmin = 0
+        xmax = 1
+
+    if ((ymax == ymin) | (ymax < ymin)):
+        ymin = 0
+        ymax = 1
+
+    myaxis = [xmin, xmax, ymin, ymax]
+    xlim = [xmin, xmax]
+    ylim = [ymin, ymax]
+
+    tx = fun_ticksfun(xmin, xmax)
+    ty = fun_ticksfun(ymin, ymax)
+    return xlim, ylim, tx, ty
+
+
+
+def fun_ticksfun(a, b):
+
+    spacing = 0
+
+    if ((a < 0) & (b > 0)):
+        ro = max([b, -a])
+        sc = 2
+    else:
+        ro = b - a
+        sc = 1
+
+    if ro == 0:
+        print('error ticksfun')
+
+    if ro < 0.001:
+        spacing = 0.0002
+
+    if ((ro >= 0.001) & (ro < 0.002)):
+        spacing = 0.0005
+
+    if ((ro >= 0.002) & (ro < 0.005)):
+        spacing = 0.001
+
+    if ((ro >= 0.005) & (ro < 0.01)):
+        spacing = 0.002
+
+    if ((ro >= 0.01) & (ro < 0.02)):
+        spacing = 0.005
+
+    if ((ro >= 0.02) & (ro < 0.05)):
+        spacing = 0.01
+
+    if ((ro >= 0.05) & (ro < 0.1)):
+        spacing = 0.02
+
+    if ((ro >= 0.1) & (ro < 0.2)):
+        spacing = 0.05
+
+    if ((ro >= 0.2) & (ro < 0.5)):
+        spacing = 0.1
+
+    if ((ro >= 0.5) & (ro < 1)):
+        spacing = 0.2
+
+    if ((ro >= 1) & (ro < 2)):
+        spacing = 0.5
+
+    if ((ro >= 2) & (ro < 5)):
+        spacing = 1
+
+    if ((ro >= 5) & (ro < 10)):
+        spacing = 2
+
+    if ((ro >= 10) & (ro < 20)):
+        spacing = 5
+
+    if ((ro >= 20) & (ro < 40)):
+        spacing = 10
+
+    if ((ro >= 40) & (ro <= 100)):
+        spacing = 20
+
+    if ((ro > 100) & (ro < 200)):
+        spacing = 50
+
+    if ((ro >= 200) & (ro < 500)):
+        spacing = 100
+
+    if ((ro >= 500) & (ro < 1000)):
+        spacing = 250
+
+    if ((ro >= 1000) & (ro < 2000)):
+        spacing = 500
+
+    if ((ro >= 2000) & (ro < 5000)):
+        spacing = 1000
+
+    if ((ro >= 5000) & (ro < 10000)):
+        spacing = 2500
+
+    spacing = spacing*sc
+
+    if ((a < 0) & (b > 0)):
+        N1 = int(-a/spacing)
+        N2 = int(b/spacing)
+        r1 = -spacing - np.arange(0, N1) * spacing
+        r2 = 0 + np.arange(0, N2+1) * spacing
+        r = np.concatenate((r1, r2), axis=0)
+    else:
+        if b == 0:
+            N = int((b-a)/spacing)
+            r = b - np.arange(0, N+1) * spacing
+        else:
+            r = np.linspace(a, b, 1 + int((b-a)/spacing))  # a:spacing:b
+            N = int((b-a)/spacing)
+            r = a + np.arange(0, N+1) * spacing
+
+    return r
