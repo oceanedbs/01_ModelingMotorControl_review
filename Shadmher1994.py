@@ -93,7 +93,7 @@ def controller(y, t, desTraj, K, V,
     if E_hat is None:
         E_hat = np.zeros(2)  # Pas de modèle initial
     else:
-        E_hat = E_hat(q, dq)  # Champ de forces appris
+        E_hat = E_hat(q, dq, L1, L2)  # Champ de forces appris
 
     # Feedback viscoélastique (S)
     S = K @ (q - q_des) + V @ (dq - dq_des)
@@ -105,7 +105,7 @@ def controller(y, t, desTraj, K, V,
     return q, dq, C
 
 # --- Simulation ---
-def simulate_movement(E_func=None, E_hat=None, t_max=1.0):
+def simulate_movement( plot_traj = False, E_func=None, E_hat=None, t_max=1.0):
     """Simuler un mouvement avec ou sans champ de forces."""
     
     # Conditions initiales: q0 = [épaule, coude], dq0 = [0, 0]
@@ -164,48 +164,49 @@ def simulate_movement(E_func=None, E_hat=None, t_max=1.0):
     desTraj["ddq1_des"] = [theta[2][0] for theta in theta_list]
     desTraj["ddq2_des"] = [theta[2][1] for theta in theta_list]
 
-    # --- Visualisation des résultats de la trajectoire désirée ---
-    fig, axs = plt.subplots(4, 1, figsize=(8, 8))
-    # Trajectoire désirée (minimum jerk) en X et Y
-    axs[0].plot(*zip(*pos_list), label="Trajectoire désirée", linestyle='--')
-    # Marquer la position de départ (en vert) et d'arrivée (en rouge)
-    axs[0].scatter(pos_list[0][0], pos_list[0][1], c='green', label="Départ")
-    axs[0].scatter(pos_list[-1][0], pos_list[-1][1], c='red', label="Arrivée")
-    axs[0].set_title("Trajectoire désirée (minimum jerk)")
-    axs[0].set_xlabel("X (m)")
-    axs[0].set_ylabel("Y (m)")
-    axs[0].axis("equal")
-    axs[0].legend()
-    axs[0].grid()
+    if plot_traj:
+        # --- Visualisation des résultats de la trajectoire désirée ---
+        fig, axs = plt.subplots(4, 1, figsize=(8, 8))
+        # Trajectoire désirée (minimum jerk) en X et Y
+        axs[0].plot(*zip(*pos_list), label="Trajectoire désirée", linestyle='--')
+        # Marquer la position de départ (en vert) et d'arrivée (en rouge)
+        axs[0].scatter(pos_list[0][0], pos_list[0][1], c='green', label="Départ")
+        axs[0].scatter(pos_list[-1][0], pos_list[-1][1], c='red', label="Arrivée")
+        axs[0].set_title("Trajectoire désirée (minimum jerk)")
+        axs[0].set_xlabel("X (m)")
+        axs[0].set_ylabel("Y (m)")
+        axs[0].axis("equal")
+        axs[0].legend()
+        axs[0].grid()
 
-    # Vitesse désirée (minimum jerk) en fonction du temps 
-    axs[1].plot(time, vel_list, label="Vitesse désirée", linestyle='--')
-    axs[1].set_title("Vitesse désirée (minimum jerk)")
-    axs[1].set_xlabel("Temps (s)")
-    axs[1].set_ylabel("Vitesse (m/s)")
-    axs[1].legend()
-    axs[1].grid()
-    
-    # Angles articulaires désirés en fonction du temps
-    axs[2].plot(time, np.rad2deg(desTraj['q1_des']), label="q1 (rad)")
-    axs[2].plot(time, np.rad2deg(desTraj['q2_des']), label="q2 (rad)")
-    axs[2].set_title("Angles articulaires désirés")
-    axs[2].set_xlabel("Temps (s)")
-    axs[2].set_ylabel("Angle (rad)")
-    axs[2].legend()
-    axs[2].grid()
-    
-    # Vitesses articulaires désirées en fonction du temps
-    axs[3].plot(time, np.rad2deg(desTraj['dq1_des']), label="dq1 (rad/s)")
-    axs[3].plot(time, np.rad2deg(desTraj['dq2_des']), label="dq2 (rad/s)")
-    axs[3].set_title("Vitesses articulaires désirées")
-    axs[3].set_xlabel("Temps (s)")
-    axs[3].set_ylabel("Vitesse (rad/s)")
-    axs[3].legend()
-    axs[3].grid()
+        # Vitesse désirée (minimum jerk) en fonction du temps 
+        axs[1].plot(time, vel_list, label="Vitesse désirée", linestyle='--')
+        axs[1].set_title("Vitesse désirée (minimum jerk)")
+        axs[1].set_xlabel("Temps (s)")
+        axs[1].set_ylabel("Vitesse (m/s)")
+        axs[1].legend()
+        axs[1].grid()
+        
+        # Angles articulaires désirés en fonction du temps
+        axs[2].plot(time, np.rad2deg(desTraj['q1_des']), label="q1 (rad)")
+        axs[2].plot(time, np.rad2deg(desTraj['q2_des']), label="q2 (rad)")
+        axs[2].set_title("Angles articulaires désirés")
+        axs[2].set_xlabel("Temps (s)")
+        axs[2].set_ylabel("Angle (rad)")
+        axs[2].legend()
+        axs[2].grid()
+        
+        # Vitesses articulaires désirées en fonction du temps
+        axs[3].plot(time, np.rad2deg(desTraj['dq1_des']), label="dq1 (rad/s)")
+        axs[3].plot(time, np.rad2deg(desTraj['dq2_des']), label="dq2 (rad/s)")
+        axs[3].set_title("Vitesses articulaires désirées")
+        axs[3].set_xlabel("Temps (s)")
+        axs[3].set_ylabel("Vitesse (rad/s)")
+        axs[3].legend()
+        axs[3].grid()
 
-    plt.tight_layout()
-    plt.show()
+        plt.tight_layout()
+        plt.show()
 
     initial_conditions = cond_init
     q_res, dq_res, ddq_res = [(cond_init[0], cond_init[1])], [(cond_init[2], cond_init[3])], [(0,0)]
@@ -224,11 +225,10 @@ def simulate_movement(E_func=None, E_hat=None, t_max=1.0):
                 f = E_func(x_dot)
                 E = J.T @ f
             else:
-                print('else')
                 E = E_func(q, dq, L1, L2)
         
         #Controller
-        q,dq, C=controller(initial_conditions, time[t], desTraj, K, V, L1, L2, m1, m2, r1, r2, I1, I2, E_func, E_hat=None)
+        q,dq, C=controller(initial_conditions, time[t], desTraj, K, V, L1, L2, m1, m2, r1, r2, I1, I2, E_func, E_hat)
 
         #system simulation
         ddq = system(q, dq, C, E, L1, L2, m1, m2, r1, r2, I1, I2, t_max)
@@ -248,7 +248,6 @@ def simulate_movement(E_func=None, E_hat=None, t_max=1.0):
 
 # --- Visualisation ---
 def plot_trajectory(t, q):
-    print("plot_trajectory")
     """Tracer la trajectoire du point final (main)."""
     x, y = [], []
     for qi in q:
@@ -275,13 +274,13 @@ if __name__ == "__main__":
     
     
     # Simuler sans champ de forces
-    t, q_null, _, _ = simulate_movement(E_func=None, t_max=t_max)
+    t, q_null, _, _ = simulate_movement(plot_traj=True, E_func=None, t_max=t_max)
     plot_trajectory(t, q_null)
 
     # # Simuler avec champ de forces cartésien
-    t, q_field, _, _ = simulate_movement(E_func=endpoint_force_field)
+    t, q_field, _, _ = simulate_movement(plot_traj=False, E_func=endpoint_force_field)
     plot_trajectory(t, q_field)
 
     # # Simuler sans champ de forces, after effect
-    t, q_field, _, _ = simulate_movement(E_func=None, E_hat=endpoint_force_field)
+    t, q_field, _, _ = simulate_movement(plot_traj=False, E_func=None, E_hat=joint_torque_field)
     plot_trajectory(t, q_field)
