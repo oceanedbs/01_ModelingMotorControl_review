@@ -36,7 +36,7 @@ def joint_torque_field(q, dq, L1, L2):
     J = np.array([[ -L1*np.sin(q[0]) - L2*np.sin(q[0]+q[1]), -L2*np.sin(q[0]+q[1]) ],
                   [ L1*np.cos(q[0]) + L2*np.cos(q[0]+q[1]),  L2*np.cos(q[0]+q[1]) ]])
     B = np.array([[-10.1, -11.2], [-11.2, 11.1]])
-    W = J.T @ B @ J  # Eq. 4: W = J^T B J
+    W = J.T @ B @ J  # Eq. 4: W = J^T B J*
     return W @ dq
 
 

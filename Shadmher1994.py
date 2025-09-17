@@ -17,9 +17,10 @@ I2 = 0.0188  # Inertie avant-bras
 r1 = 0.165  # Centre de masse bras
 r2 = 0.19   # Centre de masse avant-bras
 
-t_max = 0.5
+# Temps de simulation (en secondes)
+t_max = 0.55
 
-#Initial and final positions
+#Initial and final de la main
 x0, y0 = 0, 0  # Position initiale
 xf, yf = 0, 0.1  # Position finale (10 cm à 0°)
 
@@ -29,6 +30,7 @@ vxf, vyf = 0, 0  # Vitesse finale
 acx0, acy0 = 0, 0  # Accélération initiale
 acxf, acyf = 0, 0  # Accélération finale
 
+# Conditions initiales articulaires (rad et rad/s)
 cond_init = np.array([np.deg2rad(45), np.deg2rad(90), 0, 0]) 
 
 # Matrices de stiffness et viscosité (N·m/rad et N·m·s/rad)
@@ -38,11 +40,8 @@ V = np.array([[-2.3, -0.9], [-0.9, -2.4]])  # Viscosité
 #empty data frame to store desired trajectory
 desTraj = pd.DataFrame()
 
-
 # intial hand position
 handPos = direct_kinematics((cond_init[0], cond_init[1]), L1, L2)
-
-
 
 # System's dynamic (Eq. 5)
 def system(q, dq, C, E, L1, L2, m1, m2, r1, r2, I1, I2, t_max):
@@ -51,9 +50,8 @@ def system(q, dq, C, E, L1, L2, m1, m2, r1, r2, I1, I2, t_max):
     G = coriolis_matrix(q, dq, L1, L2, m2, r2)
 
     # Équation dynamique: I(q) ddq + G(q, dq) + E = C
-    ddq = np.linalg.pinv(I)@(C-G)  #np.linalg.solve(I, C - G - E)
-    return ddq
-
+    ddq = np.linalg.pinv(I)@(C-G-E)  #np.linalg.solve(I, C - G - E)
+    return ddq 
 
 # --- Contrôleur (Eq. 9) ---
 def controller(y, t, desTraj, K, V,
@@ -67,23 +65,23 @@ def controller(y, t, desTraj, K, V,
     E_hat: either None (== zero) or a callable E_hat(q,dq) returning joint torques (2,)
     """
     
-    q, dq = y[:2], y[2:] # récupérer q et dq initiaux
+    q, dq = y[:2], y[2:] # récupérer q et dq actuels
     
     # clamp time to avoid integrator overshoot
-    t_clamped = float(np.clip(t, desTraj["time"].iloc[0], desTraj["time"].iloc[-1]))
+    # t_clamped = float(np.clip(t, desTraj["time"].iloc[0], desTraj["time"].iloc[-1]))
 
     # # Desired joint states by interpolation
     q_des = np.array([
-        np.interp(t_clamped, desTraj["time"], desTraj["q1_des"]),
-        np.interp(t_clamped, desTraj["time"], desTraj["q2_des"])
+        np.interp(t, desTraj["time"], desTraj["q1_des"]),
+        np.interp(t, desTraj["time"], desTraj["q2_des"])
     ])
     dq_des = np.array([
-        np.interp(t_clamped, desTraj["time"], desTraj["dq1_des"]),
-        np.interp(t_clamped, desTraj["time"], desTraj["dq2_des"])
+        np.interp(t, desTraj["time"], desTraj["dq1_des"]),
+        np.interp(t, desTraj["time"], desTraj["dq2_des"])
     ])
     ddq_des = np.array([
-        np.interp(t_clamped, desTraj["time"], desTraj["ddq1_des"]),
-        np.interp(t_clamped, desTraj["time"], desTraj["ddq2_des"])
+        np.interp(t, desTraj["time"], desTraj["ddq1_des"]),
+        np.interp(t, desTraj["time"], desTraj["ddq2_des"])
     ])
     
     # Modèle interne du bras (D_hat)
@@ -102,12 +100,12 @@ def controller(y, t, desTraj, K, V,
 
     # Contrôleur complet (Eq. 9)
     # C = D_hat + E_hat - S
-    C = S + D_hat
+    C = S + D_hat + E_hat
 
     return q, dq, C
 
 # --- Simulation ---
-def simulate_movement(E_func=None, t_max=1.0):
+def simulate_movement(E_func=None, E_hat=None, t_max=1.0):
     """Simuler un mouvement avec ou sans champ de forces."""
     
     # Conditions initiales: q0 = [épaule, coude], dq0 = [0, 0]
@@ -221,19 +219,13 @@ def simulate_movement(E_func=None, t_max=1.0):
             E = np.zeros(2)
         else:
             if E_func.__name__ == "endpoint_force_field":
-                print('end_point force field')
                 J = jacobian(q, L1, L2)
                 x_dot = J @ dq
                 f = E_func(x_dot)
-                print("f:", f)  # Debug: print the force vector
-                stop()
                 E = J.T @ f
             else:
                 print('else')
-                E = E_func(q, dq)
-                print("E:", E)  # Debug: print the force vector
-                stop()
-        
+                E = E_func(q, dq, L1, L2)
         
         #Controller
         q,dq, C=controller(initial_conditions, time[t], desTraj, K, V, L1, L2, m1, m2, r1, r2, I1, I2, E_func, E_hat=None)
@@ -280,10 +272,16 @@ def plot_trajectory(t, q):
 if __name__ == "__main__":
     
     plot_arm(cond_init, L1, L2, [xf, yf])
+    
+    
     # Simuler sans champ de forces
     t, q_null, _, _ = simulate_movement(E_func=None, t_max=t_max)
     plot_trajectory(t, q_null)
 
     # # Simuler avec champ de forces cartésien
     t, q_field, _, _ = simulate_movement(E_func=endpoint_force_field)
+    plot_trajectory(t, q_field)
+
+    # # Simuler sans champ de forces, after effect
+    t, q_field, _, _ = simulate_movement(E_func=None, E_hat=endpoint_force_field)
     plot_trajectory(t, q_field)

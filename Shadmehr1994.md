@@ -1,4 +1,4 @@
-# Article : Adaptive Representation of Dynamics during Learning of a Motor Task, from Reza Shadmehr and Ferdinand0 A. Mussa-lvaldi
+# Article : Adaptive Representation of Dynamics during Learning of a Motor Task, from Reza Shadmehr and Ferdinand A. Mussa-lvaldi
 
 
 This project simulates the dynamics and control of a two-link planar arm (shoulder + elbow), based on a simplified biomechanical model.
