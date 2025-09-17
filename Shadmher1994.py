@@ -39,11 +39,22 @@ desTraj = pd.DataFrame()
 
 handPos = direct_kinematics((cond_init[0], cond_init[1]), L1, L2)
 
+
+
+def system(q, dq, C, E, L1, L2, m1, m2, r1, r2, I1, I2, t_max):
+     #Calcul des matrices d'inertie et de coriolis à partir de q et dq
+    I = inertia_matrix(q, L1, L2, m1, m2, r1, r2, I1, I2)
+    G = coriolis_matrix(q, dq, L1, L2, m2, r2)
+
+    # Équation dynamique: I(q) ddq + G(q, dq) + E = C
+    ddq = np.linalg.pinv(I)@(C-G)  #np.linalg.solve(I, C - G - E)
+    return ddq
+
+
 # --- Contrôleur (Eq. 9) ---
-def controller(q, dq, t, desTraj,
-                L1, L2, m1, m2, r1, r2, I1, I2,
-                K, V, E_hat=None):
-    print("controller")
+def controller(y, t, desTraj, K, V,
+             L1, L2, m1, m2, r1, r2, I1, I2,
+             E_func=None, E_hat=None):
     """
     Returns tau = C(q,dq,t) following Shadmehr Eq.9 form:
     tau = I(q) @ ddq_des + G(q,dq) + E_hat - K (q - q_des) - V (dq - dq_des)
@@ -51,6 +62,9 @@ def controller(q, dq, t, desTraj,
     desTraj: pandas DataFrame with columns time, trajX, trajY, velX, velY, accelX, accelY
     E_hat: either None (== zero) or a callable E_hat(q,dq) returning joint torques (2,)
     """
+    
+    q, dq = y[:2], y[2:] # récupérer q et dq initiaux
+    
     # clamp time to avoid integrator overshoot
     t_clamped = float(np.clip(t, desTraj["time"].iloc[0], desTraj["time"].iloc[-1]))
 
@@ -87,44 +101,8 @@ def controller(q, dq, t, desTraj,
     # Contrôleur complet (Eq. 9)
     # C = D_hat + E_hat - S
     C = S + D_hat
-    return C
 
-def system(q, dq, C, E, L1, L2, m1, m2, r1, r2, I1, I2, t_max):
-     #Calcul des matrices d'inertie et de coriolis à partir de q et dq
-    I = inertia_matrix(q, L1, L2, m1, m2, r1, r2, I1, I2)
-    G = coriolis_matrix(q, dq, L1, L2, m2, r2)
-
-    # Équation dynamique: I(q) ddq + G(q, dq) + E = C
-    ddq = np.linalg.pinv(I)@(C-G)  #np.linalg.solve(I, C - G - E)
-    return ddq
-
-# --- Dynamique complète (Eq. 4) ---
-def MyControl(y, t, desTraj, K, V,
-             L1, L2, m1, m2, r1, r2, I1, I2,
-             E_func=None, E_hat=None):
-    print("dynamics")
-    """Équations différentielles pour la dynamique du bras."""
-    q, dq = y[:2], y[2:]  # récupérer q et dq initiaux
-
-    # External environment forces
-    if E_func is None:
-        E = np.zeros(2)
-    else:
-        if E_func.__name__ == "endpoint_force_field":
-            J = jacobian(q, L1, L2)
-            x_dot = J @ dq
-            f = E_func(x_dot)
-            E = J.T @ f
-        else:
-            E = E_func(q, dq)
-
-
-    # Controller torque
-    C = controller(q, dq, t, desTraj, L1, L2, m1, m2, r1, r2, I1, I2, K, V, E_hat)
-    
-   
-   
-    return q, dq, C, E
+    return q, dq, C
 
 # --- Simulation ---
 def simulate_movement(E_func=None, t_max=1.0):
@@ -229,11 +207,26 @@ def simulate_movement(E_func=None, t_max=1.0):
 
     initial_conditions = cond_init
     
-    print(cond_init)
     q_res, dq_res, ddq_res = [(cond_init[0], cond_init[1])], [(cond_init[2], cond_init[3])], [(0,0)]
-    print("Time : ", time)
+
     for t in range(len(time)-1):
-        q,dq, C, E=MyControl(initial_conditions, time[t], desTraj, K, V, L1, L2, m1, m2, r1, r2, I1, I2, E_func, E_hat=None)
+        
+        q, dq = initial_conditions[:2], initial_conditions[2:]
+        # External environment forces
+        if E_func is None:
+            E = np.zeros(2)
+        else:
+            if E_func.__name__ == "endpoint_force_field":
+                J = jacobian(q, L1, L2)
+                x_dot = J @ dq
+                f = E_func(x_dot)
+                E = J.T @ f
+            else:
+                E = E_func(q, dq)
+        
+        
+        #Controller
+        q,dq, C=controller(initial_conditions, time[t], desTraj, K, V, L1, L2, m1, m2, r1, r2, I1, I2, E_func, E_hat=None)
 
          #system simulation
         ddq = system(q, dq, C, E, L1, L2, m1, m2, r1, r2, I1, I2, t_max)
@@ -277,9 +270,8 @@ def plot_trajectory(t, q):
 if __name__ == "__main__":
     # Simuler sans champ de forces
     t, q_null, _, _ = simulate_movement(E_func=None, t_max=t_max)
-    print(q_null)
     plot_trajectory(t, q_null)
 
     # # Simuler avec champ de forces cartésien
-    # t, q_field, _ = simulate_movement(E_func=endpoint_force_field)
-    # plot_trajectory(t, q_field)
+    t, q_field, _, _ = simulate_movement(E_func=endpoint_force_field)
+    plot_trajectory(t, q_field)
