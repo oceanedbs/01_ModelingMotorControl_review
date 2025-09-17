@@ -35,12 +35,16 @@ cond_init = np.array([np.deg2rad(45), np.deg2rad(90), 0, 0])
 K = np.array([[-15, -6], [-6, -16]])  # Stiffness
 V = np.array([[-2.3, -0.9], [-0.9, -2.4]])  # Viscosité
 
+#empty data frame to store desired trajectory
 desTraj = pd.DataFrame()
 
+
+# intial hand position
 handPos = direct_kinematics((cond_init[0], cond_init[1]), L1, L2)
 
 
 
+# System's dynamic (Eq. 5)
 def system(q, dq, C, E, L1, L2, m1, m2, r1, r2, I1, I2, t_max):
      #Calcul des matrices d'inertie et de coriolis à partir de q et dq
     I = inertia_matrix(q, L1, L2, m1, m2, r1, r2, I1, I2)
@@ -82,8 +86,6 @@ def controller(y, t, desTraj, K, V,
         np.interp(t_clamped, desTraj["time"], desTraj["ddq2_des"])
     ])
     
-    print("q_des:", q_des, "dq_des:", dq_des)
-
     # Modèle interne du bras (D_hat)
     I = inertia_matrix(q, L1, L2, m1, m2, r1, r2, I1, I2)
     G = coriolis_matrix(q, dq, L1, L2, m2, r2)
@@ -106,14 +108,16 @@ def controller(y, t, desTraj, K, V,
 
 # --- Simulation ---
 def simulate_movement(E_func=None, t_max=1.0):
-    print("simulate_movement")
     """Simuler un mouvement avec ou sans champ de forces."""
+    
     # Conditions initiales: q0 = [épaule, coude], dq0 = [0, 0]
     q0 = cond_init  # q1_0, q2_0, dq1_0, dq2_0, conditions initiales articulaires
-    print(q0)
     t = np.linspace(0, t_max, 100) # 100 points de temps de simulation
+    
     pos_list = []
     vel_list = []
+    
+    #define desired trajectory based on minimum jerk model
     time, posX, velX, accelX , jerkX = fun_minjerktrajectory(0.5, x0, vx0, acx0, xf, vxf, acxf, 100)  # Pré-calculer la trajectoire désirée
     time, posY, velY, accelY , jerkY = fun_minjerktrajectory(0.5, y0, vy0, acy0, yf, vyf, acyf, 100)  # Pré-calculer la trajectoire désirée
 
@@ -206,9 +210,9 @@ def simulate_movement(E_func=None, t_max=1.0):
     plt.show()
 
     initial_conditions = cond_init
-    
     q_res, dq_res, ddq_res = [(cond_init[0], cond_init[1])], [(cond_init[2], cond_init[3])], [(0,0)]
 
+    # Simulation temporelle
     for t in range(len(time)-1):
         
         q, dq = initial_conditions[:2], initial_conditions[2:]
@@ -217,18 +221,24 @@ def simulate_movement(E_func=None, t_max=1.0):
             E = np.zeros(2)
         else:
             if E_func.__name__ == "endpoint_force_field":
+                print('end_point force field')
                 J = jacobian(q, L1, L2)
                 x_dot = J @ dq
                 f = E_func(x_dot)
+                print("f:", f)  # Debug: print the force vector
+                stop()
                 E = J.T @ f
             else:
+                print('else')
                 E = E_func(q, dq)
+                print("E:", E)  # Debug: print the force vector
+                stop()
         
         
         #Controller
         q,dq, C=controller(initial_conditions, time[t], desTraj, K, V, L1, L2, m1, m2, r1, r2, I1, I2, E_func, E_hat=None)
 
-         #system simulation
+        #system simulation
         ddq = system(q, dq, C, E, L1, L2, m1, m2, r1, r2, I1, I2, t_max)
         
         #Integration (Euler explicite)

@@ -5,7 +5,6 @@ import matplotlib.patches as patches
 
 # --- Dynamique du bras ---
 def inertia_matrix(q, L1, L2, m1, m2, r1, r2, I1, I2):
-    print("inertia_matrix")
     """Matrice d'inertie I(q) pour un bras à 2 DDL."""
     q1, q2 = q
     I11 = I1 + I2 + m1*r1**2 + m2*(L1**2 + r2**2 + 2*L1*r2*np.cos(q2))
@@ -15,7 +14,6 @@ def inertia_matrix(q, L1, L2, m1, m2, r1, r2, I1, I2):
     return np.array([[I11, I12], [I21, I22]])
 
 def coriolis_matrix(q, dq, L1, L2, m2, r2):
-    print("coriolis_matrix")
     """Forces de Coriolis et centrifuges G(q, dq)."""
     q1, q2 = q
     dq1, dq2 = dq
@@ -28,13 +26,11 @@ def coriolis_matrix(q, dq, L1, L2, m2, r2):
 
 # --- Champ de forces ---
 def endpoint_force_field(x_dot):
-    print("endpoint_force_field")
     """Champ de forces translation-invariant en coordonnées cartésiennes (Eq. 1)."""
     B = np.array([[-10.1, -11.2], [-11.2, 11.1]])
     return B @ x_dot
 
 def joint_torque_field(q, dq, L1, L2):
-    print("joint_torque_field")
     """Champ de forces translation-invariant en coordonnées articulaires (Eq. 3)."""
     # Jacobien simplifié (à calculer proprement pour une implémentation complète)
     J = np.array([[ -L1*np.sin(q[0]) - L2*np.sin(q[0]+q[1]), -L2*np.sin(q[0]+q[1]) ],
@@ -158,7 +154,6 @@ def fun_minjerktrajectory(duration, posi, veli, acci, posf, velf, accf, npoints)
 
 
 def direct_kinematics(q, L1, L2):
-    print("direct_kinematics")
     """Calcule la position (x, y) du point final à partir de q."""
     q1, q2 = q
     x = L1 * np.cos(q1) + L2 * np.cos(q1 + q2)
@@ -166,7 +161,6 @@ def direct_kinematics(q, L1, L2):
     return np.array([x, y])
 
 def inverse_kinematics(x, y, L1, L2):
-    print("inverse_kinematics")
     """Calcule q1 et q2 pour atteindre (x, y)."""
     # Distance à la cible
     d2 = (x**2 + y**2)
@@ -184,7 +178,6 @@ def inverse_kinematics(x, y, L1, L2):
 
 # --- Jacobien ---
 def jacobian(q, L1, L2):
-    print("ddirect_kinematics")
     """Dérivé du modèle cinématique direct pour convertire les vitesses articulaires en vitesses cartésiennes."""
     q1, q2 = q
     J = np.array([
@@ -196,7 +189,6 @@ def jacobian(q, L1, L2):
 #%%%%%%%
 
 def jacobian_dot(q, qd, L1, L2):
-    print("jacobian_dot")
     q1, q2 = q
     dq1, dq2 = qd
     """Dérivée du jacobien (dJ/dt)."""
@@ -208,7 +200,6 @@ def jacobian_dot(q, qd, L1, L2):
 
 
 def forward_kinematics_acceleration(q1, q2, dq1, dq2, ddq1, ddq2):
-    print("forward_kinematics_acceleration")
     """Calcule les accélérations cartésiennes (ddx, ddy)."""
     J = jacobian(q1, q2)
     dJ = jacobian_dot(q1, q2, dq1, dq2)
@@ -219,7 +210,6 @@ def forward_kinematics_acceleration(q1, q2, dq1, dq2, ddq1, ddq2):
     return ddx, ddy
 
 def inverse_jacobian(q1, q2):
-    print("inverse_jacobian")
     """Inverse le jacobien (si possible)."""
     J = jacobian([q1, q2], L1, L2)
     det_J = np.linalg.det(J)
@@ -228,7 +218,6 @@ def inverse_jacobian(q1, q2):
     return np.linalg.inv(J)
 
 def inverse_kinematics_velocities(x, dx, L1, L2):
-    print("inverse_kinematics_velocities")
     """Calcule q1, q2 et leurs vitesses à partir de x, y, dx, dy."""
     x, y = x
     dx, dy = dx
@@ -272,14 +261,12 @@ def compute_joint_desired_states(x_des, dx_des, ddx_des, L1, L2,
     """
 
     x_des = np.asarray(x_des, dtype=float)
-    print(x_des)
     
     dx_des = np.asarray(dx_des, dtype=float)
     ddx_des = np.asarray(ddx_des, dtype=float)
 
     # 1) inverse kinematics (position)
     qd = np.asarray(inverse_kin_fn(x_des[0], x_des[1], L1, L2), dtype=float)  # shape (2,)
-    print(qd)
 
     # 2) Jacobian at qd
     J = np.asarray(jacobian_fn(qd, L1, L2), dtype=float)  # shape (2,2)
